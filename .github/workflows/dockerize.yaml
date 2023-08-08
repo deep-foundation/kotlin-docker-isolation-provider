@@ -1,7 +1,7 @@
 name: Deploy deepRunnerJs
 on:
   push:
-    branches: [ main ]
+    branches: [ dev ]
   workflow_dispatch:
 defaults:
   run:

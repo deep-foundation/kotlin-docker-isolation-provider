@@ -40,16 +40,15 @@ const makeFunctionKotlin = (code: string) => {
   try {
     const jsFilePath = compileKotlinToJs(code);
     const fn = require(jsFilePath);
+    if (typeof fn !== 'function')
+    {
+      throw new Error("Executed handler's code didn't return a function.");
+    }
+    return fn;
   } catch (error) {
     console.error('Error creating function:', error);
     throw new Error('Error creating function');
   }
-
-  if (typeof fn !== 'function')
-  {
-    throw new Error("Executed handler's code didn't return a function.");
-  }
-  return fn;
 }
 
 
@@ -117,7 +116,7 @@ app.use('/http-call', async (req, res, next) => {
     const options = decodeURI(`${req.headers['deep-call-options']}`) || '{}';
     console.log('deep-call-options', options);
     const { jwt, code, data } = JSON.parse(options as string);
-    const fn = makeFunction(code);
+    const fn = makeFunctionKotlin(code);
     const deep = makeDeepClient(jwt);
     await fn(req, res, next, { data, deep, gql, require: requireWrapper }); // Supports both sync and async functions the same way
   }
