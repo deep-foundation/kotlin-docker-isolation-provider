@@ -27,9 +27,12 @@ const compileKotlinToJs = (kotlinCode: string) => {
   fs.writeFileSync(tmpFile.name, kotlinCode);
 
   try {
-    const compileCommand = `kotlinc-js -output ${tmpFile.name.replace('.kt', '.js')} ${tmpFile.name}`;
+    const outputDir = '/tmp';
+    const outputName = tmpFile.name.replace('.kt', '.js');
+
+    const compileCommand = `kotlinc-js -output-prefix ${outputDir} -ir-output-dir ${outputDir} -ir-output-name ${outputName} -Xir-produce-js ${tmpFile.name}`;
     execSync(compileCommand);
-    return tmpFile.name.replace('.kt', '.js');
+    return outputName;
   } catch (error) {
     console.error('Kotlin compilation error:', error);
     throw new Error('Kotlin compilation error');
