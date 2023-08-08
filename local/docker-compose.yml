@@ -1,0 +1,13 @@
+version: '3.6'
+services:
+  kotlin-docker-isolation-provider:
+    image: deepf/kotlin-docker-isolation-provider:main
+    networks:
+      - deep
+    ports:
+      - 3020:3020
+    restart: always
+    environment: {}
+networks:
+  deep:
+    driver: bridge
