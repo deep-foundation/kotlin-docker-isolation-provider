@@ -7,6 +7,9 @@ import http from 'http';
 // import { parseStream, parseFile } from 'music-metadata';
 import { createRequire } from 'node:module';
 import bodyParser from 'body-parser';
+
+import { kotlin } from "kotlin/kotlin.js";
+
 const require = createRequire(import.meta.url);
 
 const memoEval = memoize(eval);
@@ -22,34 +25,43 @@ const { execSync } = require('child_process');
 const fs = require('fs');
 const tmp = require('tmp-promise');
 
-const compileKotlinToJs = (kotlinCode: string) => {
-  const tmpFile = tmp.fileSync({ postfix: '.kt' });
-  fs.writeFileSync(tmpFile.name, kotlinCode);
-
-  try {
-    const compileCommand = `kotlinc-js -output ${tmpFile.name.replace('.kt', '.js')} ${tmpFile.name}`;
-    execSync(compileCommand);
-    return tmpFile.name.replace('.kt', '.js');
-  } catch (error) {
-    console.error('Kotlin compilation error:', error);
-    throw new Error('Kotlin compilation error');
-  }
+async function dynamicImport(moduleName: string) {
+      try {
+            const module = await import(moduleName);
+            const functionName = Object.keys(module.default)[0];
+            return module.default[functionName];
+      } catch (error) {
+            return { error: `Dynamic import error: ${error.message}` };
+      }
 }
 
-const makeFunctionKotlin = (code: string) => {
-  try {
-    const jsFilePath = compileKotlinToJs(code);
-    const fn = require(jsFilePath);
-  } catch (error) {
-    console.error('Error creating function:', error);
-    throw new Error('Error creating function');
-  }
+const compileKotlinToJs = (kotlinCode: string) => {
+      const tmpFile = tmp.fileSync({ postfix: '.kt' });
+      fs.writeFileSync(tmpFile.name, kotlinCode);
 
-  if (typeof fn !== 'function')
-  {
-    throw new Error("Executed handler's code didn't return a function.");
-  }
-  return fn;
+      try {
+            const compileCommand = `/opt/kotlin/bin/kotlinc-js -output ${tmpFile.name.replace('.kt', '.cjs')} -module-kind commonjs ${tmpFile.name}`;
+            execSync(compileCommand);
+            return tmpFile.name.replace('.kt', '.cjs');
+      } catch (error) {
+            const errorMessage = `Kotlin compilation error: ${error.message}`;
+            console.error(errorMessage);
+            return { error: errorMessage };
+      }
+}
+
+const makeFunctionKotlin = async (code: string) => {
+    const jsFilePath = compileKotlinToJs(code);
+    if (jsFilePath.error !== undefined ) {
+        return { error: jsFilePath.error };
+    } else {
+        try {
+            const module = await dynamicImport(jsFilePath);
+            return module;
+        } catch (error) {
+            return { error: error.message };
+        }
+    }
 }
 
 
@@ -98,11 +110,16 @@ app.post('/call', async (req, res) => {
   try {
     console.log('call body params', req?.body?.params);
     const { jwt, code, data } = req?.body?.params || {};
-    const fn = makeFunctionKotlin(code);
-    const deep = makeDeepClient(jwt);
-    const result = await fn({ data, deep, gql, require: requireWrapper }); // Supports both sync and async functions the same way
-    console.log('call result', result);
-    res.json({ resolved: result });
+    const fn = await makeFunctionKotlin(code);
+    if (fn.error !== undefined ) {
+        console.log('rejected', fn.error);
+        res.json({ rejected: fn.error });
+    } else {
+        const deep = makeDeepClient(jwt);
+        const result = await fn({ data, deep, gql, require: requireWrapper }); // Supports both sync and async functions the same way
+        console.log('call result', result);
+        res.json({ resolved: result });
+    }
   }
   catch(rejected)
   {
@@ -117,9 +134,14 @@ app.use('/http-call', async (req, res, next) => {
     const options = decodeURI(`${req.headers['deep-call-options']}`) || '{}';
     console.log('deep-call-options', options);
     const { jwt, code, data } = JSON.parse(options as string);
-    const fn = makeFunction(code);
-    const deep = makeDeepClient(jwt);
-    await fn(req, res, next, { data, deep, gql, require: requireWrapper }); // Supports both sync and async functions the same way
+    const fn = await makeFunctionKotlin(code);
+    if (fn.error !== undefined ) {
+        console.log('rejected', fn.error);
+        res.json({ rejected: fn.error });
+    } else {
+        const deep = makeDeepClient(jwt);
+        await fn(req, res, next, { data, deep, gql, require: requireWrapper }); // Supports both sync and async functions the same way
+    }
   }
   catch(rejected)
   {

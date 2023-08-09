@@ -21,13 +21,50 @@ const app = express();
 const GQL_URN = process.env.GQL_URN || 'localhost:3006/gql';
 const GQL_SSL = process.env.GQL_SSL || 0;
 const toJSON = (data) => JSON.stringify(data, Object.getOwnPropertyNames(data), 2);
-const makeFunction = (code) => {
-    const fn = memoEval(code);
-    if (typeof fn !== 'function') {
-        throw new Error("Executed handler's code didn't return a function.");
+const { execSync } = require('child_process');
+const fs = require('fs');
+const tmp = require('tmp-promise');
+function dynamicImport(moduleName) {
+    return __awaiter(this, void 0, void 0, function* () {
+        try {
+            const module = yield import(moduleName);
+            const functionName = Object.keys(module.default)[0];
+            return module.default[functionName];
+        }
+        catch (error) {
+            return { error: `Dynamic import error: ${error.message}` };
+        }
+    });
+}
+const compileKotlinToJs = (kotlinCode) => {
+    const tmpFile = tmp.fileSync({ postfix: '.kt' });
+    fs.writeFileSync(tmpFile.name, kotlinCode);
+    try {
+        const compileCommand = `/opt/kotlin/bin/kotlinc-js -output ${tmpFile.name.replace('.kt', '.cjs')} -module-kind commonjs ${tmpFile.name}`;
+        execSync(compileCommand);
+        return tmpFile.name.replace('.kt', '.cjs');
     }
-    return fn;
+    catch (error) {
+        const errorMessage = `Kotlin compilation error: ${error.message}`;
+        console.error(errorMessage);
+        return { error: errorMessage };
+    }
 };
+const makeFunctionKotlin = (code) => __awaiter(void 0, void 0, void 0, function* () {
+    const jsFilePath = compileKotlinToJs(code);
+    if (jsFilePath.error !== undefined) {
+        return { error: jsFilePath.error };
+    }
+    else {
+        try {
+            const module = yield dynamicImport(jsFilePath);
+            return module;
+        }
+        catch (error) {
+            return { error: error.message };
+        }
+    }
+});
 const makeDeepClient = (token) => {
     if (!token)
         throw new Error('No token provided');
@@ -72,11 +109,17 @@ app.post('/call', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         console.log('call body params', (_a = req === null || req === void 0 ? void 0 : req.body) === null || _a === void 0 ? void 0 : _a.params);
         const { jwt, code, data } = ((_b = req === null || req === void 0 ? void 0 : req.body) === null || _b === void 0 ? void 0 : _b.params) || {};
-        const fn = makeFunction(code);
-        const deep = makeDeepClient(jwt);
-        const result = yield fn({ data, deep, gql, require: requireWrapper });
-        console.log('call result', result);
-        res.json({ resolved: result });
+        const fn = yield makeFunctionKotlin(code);
+        if (fn.error !== undefined) {
+            console.log('rejected', fn.error);
+            res.json({ rejected: fn.error });
+        }
+        else {
+            const deep = makeDeepClient(jwt);
+            const result = yield fn({ data, deep, gql, require: requireWrapper });
+            console.log('call result', result);
+            res.json({ resolved: result });
+        }
     }
     catch (rejected) {
         const processedRejection = JSON.parse(toJSON(rejected));
@@ -89,9 +132,15 @@ app.use('/http-call', (req, res, next) => __awaiter(void 0, void 0, void 0, func
         const options = decodeURI(`${req.headers['deep-call-options']}`) || '{}';
         console.log('deep-call-options', options);
         const { jwt, code, data } = JSON.parse(options);
-        const fn = makeFunction(code);
-        const deep = makeDeepClient(jwt);
-        yield fn(req, res, next, { data, deep, gql, require: requireWrapper });
+        const fn = yield makeFunctionKotlin(code);
+        if (fn.error !== undefined) {
+            console.log('rejected', fn.error);
+            res.json({ rejected: fn.error });
+        }
+        else {
+            const deep = makeDeepClient(jwt);
+            yield fn(req, res, next, { data, deep, gql, require: requireWrapper });
+        }
     }
     catch (rejected) {
         const processedRejection = JSON.parse(toJSON(rejected));

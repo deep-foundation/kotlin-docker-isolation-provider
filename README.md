@@ -24,6 +24,7 @@
 ## Restart docker
 
 ```bash
+npm run package:build
 docker build -t kotlin-docker-isolation-provider .
 
 docker run -d -p 31190:31190 -e PORT=31190 kotlin-docker-isolation-provider
