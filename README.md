@@ -24,6 +24,7 @@
 ## Restart docker
 
 ```bash
+npm ci
 npm run package:build
 docker build -t kotlin-docker-isolation-provider .
 

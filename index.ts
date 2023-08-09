@@ -9,6 +9,9 @@ import { createRequire } from 'node:module';
 import bodyParser from 'body-parser';
 
 import { kotlin } from "kotlin/kotlin.js";
+import { exec } from 'child_process';
+import * as util from 'util';
+import * as path from 'path';
 
 const require = createRequire(import.meta.url);
 
@@ -21,7 +24,6 @@ const GQL_SSL = process.env.GQL_SSL || 0;
 
 const toJSON = (data) => JSON.stringify(data, Object.getOwnPropertyNames(data), 2);
 
-const { execSync } = require('child_process');
 const fs = require('fs');
 const tmp = require('tmp-promise');
 
@@ -35,14 +37,16 @@ async function dynamicImport(moduleName: string) {
       }
 }
 
-const compileKotlinToJs = (kotlinCode: string) => {
-      const tmpFile = tmp.fileSync({ postfix: '.kt' });
-      fs.writeFileSync(tmpFile.name, kotlinCode);
+const compileKotlinToJs = async (kotlinCode: string) => {
+      const execAsync = util.promisify(exec);
+      const tempDir = await fs.promises.mkdtemp(path.join('/tmp', 'kotlin-'));
+      const tempFilePath = path.join(tempDir, 'input.kt');
+      await fs.promises.writeFile(tempFilePath, kotlinCode);
 
       try {
-            const compileCommand = `/opt/kotlin/bin/kotlinc-js -output ${tmpFile.name.replace('.kt', '.cjs')} -module-kind commonjs ${tmpFile.name}`;
-            execSync(compileCommand);
-            return tmpFile.name.replace('.kt', '.cjs');
+            const compileCommand = `/opt/kotlin/bin/kotlinc-js -output ${tempFilePath.replace('.kt', '.cjs')} -module-kind commonjs ${tempFilePath}`;
+            await execAsync(compileCommand);
+            return tempFilePath.replace('.kt', '.cjs');
       } catch (error) {
             const errorMessage = `Kotlin compilation error: ${error.message}`;
             console.error(errorMessage);
@@ -51,19 +55,18 @@ const compileKotlinToJs = (kotlinCode: string) => {
 }
 
 const makeFunctionKotlin = async (code: string) => {
-    const jsFilePath = compileKotlinToJs(code);
-    if (jsFilePath.error !== undefined ) {
-        return { error: jsFilePath.error };
-    } else {
+    const jsFilePath = await compileKotlinToJs(code);
+    if (typeof jsFilePath === 'string') {
         try {
             const module = await dynamicImport(jsFilePath);
             return module;
         } catch (error) {
             return { error: error.message };
         }
+    } else if (jsFilePath.error !== undefined ) {
+        return { error: jsFilePath.error };
     }
 }
-
 
 const makeDeepClient = (token: string) => {
   if (!token) throw new Error('No token provided');
