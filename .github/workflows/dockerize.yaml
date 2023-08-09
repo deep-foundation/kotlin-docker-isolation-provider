@@ -1,7 +1,7 @@
 name: Deploy deepRunnerKotlin
 on:
   push:
-    branches: [ dev ]
+    branches: [ main, dev ]
   workflow_dispatch:
 defaults:
   run:
