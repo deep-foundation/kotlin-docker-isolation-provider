@@ -21,6 +21,26 @@
     - `{ resolved?: any; rejected?: any; }` - If resolved or rejected is not null, then it's result of execution
 
 
+## Examples
+```kt
+suspend fun fn(args: dynamic):Any {
+    val deep = args.deep
+    val data = args.data
+
+    val resultPromise = deep.id("@deep-foundation/core", "Symbol").then { result ->
+        val insertData = object {
+            val type_id = result
+            val string = "DeepFoundation".reversed()
+            val from_id = data.newLink.id
+            val to_id = data.newLink.id
+        }
+        deep.insert(insertData)
+    }
+
+    return resultPromise
+}
+```
+
 ## Restart docker
 
 ```bash

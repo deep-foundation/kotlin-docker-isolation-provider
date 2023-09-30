@@ -6,7 +6,7 @@ RUN apt-get install ffmpeg zip -y
 
 # Install OpenJDK and Kotlin Compiler
 COPY --from=openjdk /usr/local/openjdk-17 /usr/local/openjdk-17
-ENV PATH="/usr/local/openjdk-22/bin:${PATH}"
+ENV PATH="/usr/local/openjdk-17/bin:${PATH}"
 ENV JAVA_HOME /usr/local/openjdk-17
 ENV JDK_VERSION 17
 RUN curl -s https://get.sdkman.io | bash
